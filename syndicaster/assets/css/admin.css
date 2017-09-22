@@ -1,0 +1,12 @@
+.syn-account, .syn-app {
+  position: relative;
+}
+
+#syndicaster-loader {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 150px;
+  transform: translateX(-50%) translateY(-50%);
+  display: none;
+}
