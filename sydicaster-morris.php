@@ -317,7 +317,7 @@ function syn_dynamic_options_page(){
 				<th scope="row" class="syn-auth"><a href="javascript:void(0);" class="syn-deauthorize delete button-secondary">De-Authorize</a></th>
 			</tr>
 			<tr>
-				<th scope="row">Station</th>
+				<th scope="row">Content Owner:</th>
 				<td>
 					<select id="syn_station" value="" data-owner="" class="regular-text">
 						<option value="" data-owner="">None</option>
