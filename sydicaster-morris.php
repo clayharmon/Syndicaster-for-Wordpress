@@ -8,27 +8,37 @@ Author: Clay Harmon
 
 include 'includes/SyndicasterAPI.php';
 
+/**
+ * Saves an image from offsite and sets it as the featured image for a particular post.
+ * 
+ * @link   http://wordpress.stackexchange.com/questions/100838/how-to-set-featured-image-to-custom-post-from-outside-programmatically
+ *
+ * @param  string  $image   Full URL of the image.
+ * @param  integer $post_id The current post id that the feature image is being set to.
+ */
+
 function syn_save_image($image, $post_id){
-	//http://wordpress.stackexchange.com/questions/100838/how-to-set-featured-image-to-custom-post-from-outside-programmatically
+	// Downloads the image and attaches it to the post.
 	$media = media_sideload_image($image, $post_id);
-	// therefore we must find it so we can set it as featured ID
+
 	if(!empty($media) && !is_wp_error($media)){
-	    $args = array(
-	        'post_type' => 'attachment',
-	        'posts_per_page' => -1,
-	        'post_status' => 'any',
-	        'post_parent' => $post_id
-	    );
-    $attachments = get_posts($args);
-    if(isset($attachments) && is_array($attachments)){
+
+		// Finds the post with the image.
+		$args = array(
+			'post_type' => 'attachment',
+			'posts_per_page' => -1,
+			'post_status' => 'any',
+			'post_parent' => $post_id
+		);
+		$attachments = get_posts($args);
+
+		if(isset($attachments) && is_array($attachments)){
 			foreach($attachments as $attachment){
-				// grab source of full size images (so no 300x150 nonsense in path)
-				$image = wp_get_attachment_image_src($attachment->ID, 'full');
-				// determine if in the $media image we created, the string of the URL exists
-				if(strpos($media, $image[0]) !== false){
-					// if so, we found our image. set it as thumbnail
+				// Gets the full image src.
+				$image_attachement = wp_get_attachment_image_src($attachment->ID, 'full');
+				// Determines if it's the same as the image we saved and sets as the thumbnail.
+				if(strpos($media, $image_attachement[0]) !== false){
 					set_post_thumbnail($post_id, $attachment->ID);
-					// only want one image
 					break;
 				}
 			}
@@ -36,55 +46,63 @@ function syn_save_image($image, $post_id){
 	}
 }
 
-add_action( 'admin_enqueue_scripts', 'syn_widget_styles' );
-add_action( 'admin_enqueue_scripts', 'syn_options_styles' );
-function syn_widget_styles($hook) {
+
+/**
+ * Enqueue scripts and styles.
+ */
+function syn_scripts($hook){
+	// For metabox box.
 	if( 'post.php' == $hook || 'post-new.php' == $hook ) {
+		// Enqueue metabox styles.
 		wp_register_style( 'syn_enqueue_css', plugins_url( '/assets/css/styles.css', __FILE__ ), false, '1.0.0' );
 	  wp_enqueue_style( 'syn_enqueue_css' );
-	}
-}
-function syn_options_styles($hook) {
-	if( 'settings_page_syn_options' == $hook ) {
-		wp_register_style( 'syn_enqueue_css', plugins_url( '/assets/css/admin.css', __FILE__ ), false, '1.0.0' );
-	  wp_enqueue_style( 'syn_enqueue_css' );
-	}
-}
-add_action( 'admin_enqueue_scripts', 'syn_widget_scripts' );
-add_action( 'admin_enqueue_scripts', 'syn_options_scripts' );
-function syn_widget_scripts($hook) {
-	if( 'post.php' == $hook || 'post-new.php' == $hook ) {
+
+		// Enqueue metabox scripts.
 		wp_enqueue_script( 'syn_enqueue_js', plugins_url( '/assets/js/metabox.js', __FILE__ ), array('jquery'),'1.0.0' );
 		wp_localize_script( 'syn_enqueue_js', 'obj',['ajax_url' => admin_url('admin-ajax.php')] );
 	}
-}
-function syn_options_scripts($hook) {
+
+	// For settings page.
 	if( 'settings_page_syn_options' == $hook ) {
+		// Enqueue settings styles.
+		wp_register_style( 'syn_enqueue_css', plugins_url( '/assets/css/admin.css', __FILE__ ), false, '1.0.0' );
+		wp_enqueue_style( 'syn_enqueue_css' );
+
+		// Enqueue settings scripts.
 		wp_enqueue_script( 'syn_enqueue_js', plugins_url( '/assets/js/settings.js', __FILE__ ), array('jquery'),'1.0.0' );
 		wp_localize_script( 'syn_enqueue_js', 'obj',['ajax_url' => admin_url('admin-ajax.php')] );
 	}
+
 }
-add_action( 'wp_ajax_syn_search', 'syn_search_callback' );
-add_action( 'wp_ajax_syn_settings', 'syn_settings_callback' );
+add_action( 'admin_enqueue_scripts', 'syn_scripts' );
+
+/**
+ * Ajax callback for the metabox.
+ *
+ * @global object $wpdb Gives access to Wordpress $options.
+ */
 function syn_search_callback() {
   global $wpdb;
   $Syn_API = new SyndicasterAPI();
   $options = get_option('syn_settings');
   $playlist = $options['playlist'];
 
+	// Gets the number to return, default is 12.
   $number = ($options['syndicaster_num_items']) ? $options['syndicaster_num_items'] : 12;
 	$term = (isset($_POST['search']) ? $_POST['search'] : '');
   $page = (isset($_POST['page']) ? $_POST['page'] : 1);
+
+	// Gets the playlist to search in, default is pl_all_videos.
 	$playlist = (isset($_POST['playlist']) ? $_POST['playlist'] : 'pl_all_videos');
 
-		/*if(!$playlist){
-	    $response = ["no_playlist"];
-	    echo json_encode($response);
-	    wp_die();
-	  }*/
+  // Performs search.
   $array = $Syn_API->search($playlist, $term, $number, $page, False);
+
+	// Formats the array a bit.
   $new = $Syn_API->cut($array);
   $data = ['results'=> $new];
+
+	// Contains pagination data.
   $extra = [
     'paging' => [
       'current' => $page,
@@ -97,11 +115,17 @@ function syn_search_callback() {
       ]
 		];
 
-  //echo json_encode($array);
   echo json_encode(array_merge($data,$extra));
 
 	wp_die();
 }
+add_action( 'wp_ajax_syn_search', 'syn_search_callback' );
+
+/**
+ * Ajax callback for the settings page.
+ *
+ * @global object $wpdb Gives access to Wordpress $options.
+ */
 function syn_settings_callback() {
   global $wpdb;
 
@@ -116,12 +140,17 @@ function syn_settings_callback() {
 		'secret'=>''
 	];
 
+	// Needs a syn_command.
 	if(!isset($_POST['syn_command'])){
 		echo json_encode(['status'=>'failed','reason'=>'no command set']);
 		wp_die();
 	}
+
+	// Checks what command is given.
 	$command = trim($_POST['syn_command']);
+
 	if($command == 'deauthorize'){
+		// Empties options.
 		$auth = false;
 		update_option('syn_auth', $auth);
 		update_option('syn_account', $account);
@@ -129,26 +158,31 @@ function syn_settings_callback() {
 
 		$data = array('status' => 'success','reason'=>'deauthorized');
 	}
+
 	if($command == 'authorize'){
+
 		if(!isset($_POST['syn_data'])){
 			echo json_encode(['status'=>'failed','reason'=>'no data sent']);
 			wp_die();
 		}
 
+		// TODO: Data is being assumed.
 		$account['user'] = $_POST['syn_data']['user'];
 		$account['password'] = md5(stripcslashes($_POST['syn_data']['password']));
 		$app['id'] = $_POST['syn_data']['id'];
 		$app['secret'] = $_POST['syn_data']['secret'];
 
+		// Sends the info and gets the token.
 		$Syn_API = new SyndicasterAPI($account, $app);
-
 		$token = $Syn_API->get_token();
 
+		// Something went wrong.
 		if(isset($token->error)){
 			echo json_encode(['status'=>'failed','reason'=>$token->error_description]);
 			wp_die();
 		}
 
+		// Something went right, so update the options.
 		if(isset($token['expires_in'])){
 			update_option('syn_auth', $token);
 			update_option('syn_account', $account);
@@ -160,6 +194,7 @@ function syn_settings_callback() {
 
 		$data = ['status'=>'success','reason'=>'Updated Options'];
 	}
+
 	if($command == 'update'){
 		if(!isset($_POST['syn_data'])){
 			echo json_encode(['status'=>'failed','reason'=>'no data sent']);
@@ -167,6 +202,8 @@ function syn_settings_callback() {
 		}
 
 		$account = get_option('syn_account', false);
+
+		// TODO: Data is being assumed.
 		$account['content_owner'] = $_POST['syn_data']['syn_station'][1];
 		$account['publisher'] = $_POST['syn_data']['syn_station'][0];
 
@@ -183,27 +220,32 @@ function syn_settings_callback() {
 
 	wp_die();
 }
-add_action('admin_menu', 'syndicaster_video_box');
-function syndicaster_video_box() {
-  add_meta_box('syn-video-box', 'Syndicaster', 'syn_widget_body', 'page', 'side', 'high');
-  add_meta_box('syn-video-box', 'Syndicaster', 'syn_widget_body', 'post', 'side', 'high');
-}
+add_action( 'wp_ajax_syn_settings', 'syn_settings_callback' );
 
+/**
+ * The html output for the metabox.
+ *
+ * @param  object $post An object containing the data for the current post.
+ */
 function syn_widget_body($post){
   $Syn_API = new SyndicasterAPI();
 	$playlists = $Syn_API->get_playlists();
+
+	// If there's no playlists, we need don't have a token.
 	if(!$playlists){
 		echo "<div class='syn-novid'><span>Please <a href='" . admin_url('options-general.php?page=syn_options'). "'>setup</a> your API connection.</span></div>";
 		return;
 	}
-  $file_id = esc_html( get_post_meta( $post->ID, 'syn_file_id', true ) );
-  $parent_id = esc_html( get_post_meta( $post->ID, 'syn_parent_id', true ) );
 
+  $file_id = esc_html(get_post_meta($post->ID, 'syn_file_id', true));
+  $parent_id = esc_html(get_post_meta($post->ID, 'syn_parent_id', true));
+
+	// TODO: Currently there is no way to set a default playlist or per page.
   $options = get_option('syn_settings');
   $playlist_default = $options['playlist'];
   $number = ($options['per_page']) ? $options['per_page'] : 12;
-  //var_dump($playlists);
 
+	// Display the attached video.
   if($file_id){
     echo '<div id="syndicaster-attached" style="display:block;"><span>Attached Video:</span>';
     $feed = $Syn_API->get_video_info($file_id);
@@ -245,40 +287,59 @@ function syn_widget_body($post){
   <input name="syn_file_id" type="hidden" value="<?php echo trim($file_id) ; ?>">
   <input name="syn_parent_id" type="hidden" value="<?php echo trim($parent_id) ; ?>">
 	<input name="syn_image_url" type="hidden" value="">
-  <?php wp_nonce_field( 'syn_set_meta_box', 'syn_meta_box' ); ?>
-
-  <?php
-
-
+  <?php wp_nonce_field( 'syn_set_meta_box', 'syn_meta_box' );
 }
-add_action('save_post','syn_update_meta');
 
+/**
+ * Adds metabox to post and page.
+ */
+function syndicaster_video_box() {
+  add_meta_box('syn-video-box', 'Syndicaster', 'syn_widget_body', 'page', 'side', 'high');
+  add_meta_box('syn-video-box', 'Syndicaster', 'syn_widget_body', 'post', 'side', 'high');
+}
+add_action('admin_menu', 'syndicaster_video_box');
+
+/**
+ * Updates the metadata when a post is saved.
+ *
+ * @param  int $post_id The current post's id.
+ */
 function syn_update_meta($post_id) {
-  if ( !isset( $_POST['syn_meta_box'] ) ) { return; }
-  if ( ! wp_verify_nonce( $_POST['syn_meta_box'], 'syn_set_meta_box' ) ) {return;}
-  if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {return;}
 
-  if ( isset( $_POST['syn_file_id'] ) ) {
+	// Returns if: no metabox, no nonce, or doing autosave.
+  if(!isset($_POST['syn_meta_box'])) { return; }
+
+  if(!wp_verify_nonce($_POST['syn_meta_box'], 'syn_set_meta_box')) { return; }
+
+  if(defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) { return; }
+
+
+  if(isset($_POST['syn_file_id'])) {
     update_post_meta( $post_id, 'syn_file_id', trim(htmlentities($_POST['syn_file_id'])) );
   }
-  if ( !empty( $_POST['syn_parent_id'] ) ) {
+
+  if(!empty($_POST['syn_parent_id'])) {
     $parent_id = trim(htmlentities($_POST['syn_parent_id']));
     $Syn_API = new SyndicasterAPI();
     $clip_id = $Syn_API->get_clip_id($parent_id);
     update_post_meta( $post_id, 'syn_parent_id',  $parent_id);
+
+		// TODO: This is a theme-specific metafield.
     update_post_meta( $post_id, 'news_story_video',  $clip_id);
   }
 
-	if ( !empty( $_POST['syn_image_url'] ) ) {
+	if(!empty( $_POST['syn_image_url'])){
+		// Gets the thumbnail of the video, downloads it, and sets it as the featured image.
     syn_save_image(trim(htmlentities($_POST['syn_image_url'])), $post_id);
   }
 
 }
+add_action('save_post','syn_update_meta');
 
 
-
-
-add_action('admin_init', 'syn_register_settings');
+/**
+ * Register settings for options.
+ */
 function syn_register_settings(){
   register_setting(
     'syn_options',
@@ -289,16 +350,11 @@ function syn_register_settings(){
     'syn_app'
   );
 }
-add_action( 'admin_menu', 'syn_add_admin_menu' );
-function syn_add_admin_menu() {
-	add_options_page(
-    'Syndicaster',
-    'Syndicaster',
-    'manage_options',
-    'syn_options',
-    'syn_dynamic_options_page'
-  );
-}
+add_action('admin_init', 'syn_register_settings');
+
+/**
+ * The html output for the settings page.
+ */
 function syn_dynamic_options_page(){
 	?>
 	<div class='wrap'>
@@ -308,6 +364,7 @@ function syn_dynamic_options_page(){
 	$auth = $Syn_API->auth;
 	$account = $Syn_API->account;
 
+	// Checks if the user has already authorized the account.
 	if($auth && !empty($account['user'])){
 		$content_owners = $Syn_API->content_owners();
 		?>
@@ -317,12 +374,13 @@ function syn_dynamic_options_page(){
 				<th scope="row" class="syn-auth"><a href="javascript:void(0);" class="syn-deauthorize delete button-secondary">De-Authorize</a></th>
 			</tr>
 			<tr>
-				<th scope="row">Station</th>
+				<th scope="row">Content Owner:</th>
 				<td>
 					<select id="syn_station" value="" data-owner="" class="regular-text">
 						<option value="" data-owner="">None</option>
 						<?php
 
+						// Lists the content owners in a select box.
 						for($i = 0; $i < count($content_owners); $i++){
 							if($content_owners[$i]->cs_wpid == $account['publisher'] && $content_owners[$i]->id == $account['content_owner']){
 				        echo '<option selected="selected" value="'.$content_owners[$i]->cs_wpid.'" data-owner="'.$content_owners[$i]->id.'">'.$content_owners[$i]->call_sign.'</option>';
@@ -344,6 +402,9 @@ function syn_dynamic_options_page(){
 
 		<?php
 	} else {
+
+		// Not logged in form.
+
 		?>
 		<div class="syn-app">
 		<table class="form-table">
@@ -375,54 +436,30 @@ function syn_dynamic_options_page(){
 	?>
 	</div>
 
-
 	<?php
 }
 
-//NOT USED BUT KEPT FOR LEGACY PURPOSES
-function syn_options_page() {
-  ?>
-  <div class='wrap'>
-  <h1>Syndicaster Settings</h1>
-  <form method="post" action="options.php">
-  <?php
-  settings_fields('syn_options');
-  $options_account = get_option('syn_account');
-  $options_app = get_option('syn_app');
-  ?>
-    <h2>Account Information</h2>
-    <table class="form-table">
-      <tr valign="top"><th scope="row">Username:</th>
-        <td><input type='text' name='syn_account[user]' value='<?=esc_attr($options_account["user"])?>' /></td>
-      </tr>
-      <tr valign="top"><th scope="row">Password:</th>
-        <td><input type='text' name='syn_account[password]' value='<?=(esc_attr($options_account["password"]))?>' /></td>
-      </tr>
-      <tr valign="top"><th scope="row">Content Owner ID:</th>
-        <td><input type='text' name='syn_account[content_owner]' value='<?=esc_attr($options_account["content_owner"])?>' /></td>
-      </tr>
-      <tr valign="top"><th scope="row">Publisher ID:</th>
-        <td><input type='text' name='syn_account[publisher]' value='<?=esc_attr($options_account["publisher"])?>' /></td>
-      </tr>
-    </table>
-    <h2>App Information</h2>
-    <table class="form-table">
-      <tr valign="top"><th scope="row">Client ID:</th>
-        <td><input type='text' name='syn_app[id]' value='<?=esc_attr($options_app["id"])?>' /></td>
-      </tr>
-      <tr valign="top"><th scope="row">Client Secret:</th>
-        <td><input type='text' name='syn_app[secret]' value='<?=esc_attr($options_app["secret"])?>' /></td>
-      </tr>
-    </table>
-    <?php submit_button();?>
-  </form>
-  <?php echo "</div>";
+/**
+ * Add option to settings menu.
+ */
+function syn_add_admin_menu() {
+	add_options_page(
+    'Syndicaster',
+    'Syndicaster',
+    'manage_options',
+    'syn_options',
+    'syn_dynamic_options_page'
+  );
 }
+add_action( 'admin_menu', 'syn_add_admin_menu' );
 
-///QUICK FIX.
-
-
-add_shortcode('syndicaster', 'synshort');
+/**
+ * Shortcode to show a video using the videos id.
+ *
+ * @param  array $atts This is the id of the video.
+ *
+ * @return string      HTML output.
+ */
 function synshort( $atts ) {
   extract( shortcode_atts( array(
     'id' => '0'
@@ -431,15 +468,44 @@ function synshort( $atts ) {
   $output = "<div class='embed-responsive embed-responsive-16by9'><iframe frameborder='0' marginheight='0' scrolling='no' style='overflow: hidden; width: 100%; height: 100%;' src='http://play.syndicaster.tv/v1/widgets/1a8b1d60-4f40-0133-abd7-7a163e1f7c79/player.html?pl_length=5&vid=".$id."&wmode=opaque' allowfullscreen=''></iframe></div>";
   return $output;
 }
+add_shortcode('syndicaster', 'synshort');
 
+/**
+ * Changes the transient lifetime to 60 seconds.
+ *
+ * @param  int $seconds
+ *
+ * @return int
+ */
 function return_60( $seconds ) {return 60; }
+
+/**
+ * Pulls an RSS feed.
+ *
+ * @param  string $feed_url Full URL for RSS feed.
+ *
+ * @return object           Object containing the data from the RSS feed.
+ */
 function rss_feed_parse( $feed_url ) {
   include_once(ABSPATH.WPINC.'/rss.php');
+
+	// Change transient lifetime to 60 seconds.
   add_filter( 'wp_feed_cache_transient_lifetime' , 'return_60' );
-  $rss=fetch_feed($feed_url);
+	// Wordpress function that pulls RSS feeds.
+  $rss = fetch_feed($feed_url);
+	// Change back transient lifetime.
   remove_filter( 'wp_feed_cache_transient_lifetime' , 'return_60' );
   return $rss;
 }
+
+/**
+ * Formats object to only data that's needed, returns only 1 item.
+ *
+ * @param  object $object The RSS feed object.
+ * @param  int    $num    The position of the item that's needed in the array
+ *
+ * @return array          The video id, the video thumbnail URL, the video title, and the video description.
+ */
 function syn_return_items($object, $num) {
   $items = $object->data["child"][""]["rss"][0]["child"][""]["channel"][0]["child"][""]["item"];
   $thumbUrl=$items[$num]["child"]["http://search.yahoo.com/mrss/"]["thumbnail"][0]["attribs"][""]["url"];
@@ -450,9 +516,13 @@ function syn_return_items($object, $num) {
   return array($urlID, $thumbUrl, $title, $description);
 }
 
-
-
-add_shortcode('syndicaster-latest', 'syncatshort');
+/**
+ * Shortcode to show a video category.
+ *
+ * @param  array $atts This is the id of the category.
+ *
+ * @return string      HTML output.
+ */
 function syncatshort( $atts ) {
   extract( shortcode_atts( array(
     'cat' => '0'
@@ -462,3 +532,4 @@ function syncatshort( $atts ) {
   $output = "<div class='embed-responsive embed-responsive-16by9'><iframe frameborder='0' marginheight='0' scrolling='no' style='overflow: hidden; width: 100%; height: 100%;' src='http://play.syndicaster.tv/v1/widgets/1a8b1d60-4f40-0133-abd7-7a163e1f7c79/player.html?pl_length=5&vid=".$array[0]."&wmode=opaque' allowfullscreen=''></iframe></div>";
   return $output;
 }
+add_shortcode('syndicaster-latest', 'syncatshort');

@@ -1,5 +1,5 @@
 # Syndicaster Plugin
-_By Clay Harmon_
+_By [@clayharmon](https://github.com/clayharmon)_
 
 ___
 
@@ -23,4 +23,4 @@ Example: All Videos -> pl_all_videos
 #### Items to Show
 This is the number of video items to show in the list in the Syndicaster box on the posts page. The default number is 12.
 
-#### 
+####
